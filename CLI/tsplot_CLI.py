@@ -4,24 +4,26 @@
 
 作者: 刘璋
 单位: 华中科技大学 | 微纳材料设计与制造研究中心
-版本: 1.0
-日期: 2023-12-01
-功能：根据CSV数据同时生成两种风格的能垒图：
-  1. curve.png - 横线+平滑曲线风格
-  2. state.png - 分段实线+散点风格
+版本: 1.1
+日期: 2024-04-02
+功能：根据CSV数据同时生成三种风格的能垒图：
+  1. curve.png    - 横线+平滑曲线风格
+  2. state.png    - 分段实线+散点风格
+  3. combined.png - 组合风格（curve 曲线 + 非TS状态粗横线）
 
 用法：
-  python plot_combined.py <data_file.csv>
+  python tsplot_CLI.py [data_file.csv]
+  （无参数时使用内置示例模板）
   
 示例：
-  python plot_combined.py data.csv
+  python tsplot_CLI.py data.csv
 
 CSV文件格式：
   - 第1行: 路径名称/图例标签（第1列是'index'，后续是路径名）
   - 第2行: 颜色配置（第1列是'color'，后续是R,G,B值）
   - 第3行起: 数据（第1列是状态名称，后续是各路径能量值）
   
-注：图片标题、Y轴标题在 PlotConfig 类中配置
+注：图片标题、Y轴标题、全局字体等在 PlotConfig 类中配置
 
 Copyright (c) 2023 华中科技大学微纳材料设计与制造研究中心
 """
@@ -66,7 +68,10 @@ class PlotConfig(NamedTuple):
     figure_size: Tuple[int, int] = (20, 15)      # 图像尺寸 (宽, 高)
     dpi: int = 300                               # 图像分辨率
     
-    # ========== 2. 字体配置（统一设置各类文字大小） ==========
+    # ========== 2. 字体配置（统一设置各类文字大小与字体） ==========
+    # 全局字体（影响标题、坐标轴、刻度、标签、图例等所有文字）
+    font_family: str = "Microsoft YaHei"         # 全局字体，可选 Arial、Times New Roman、SimHei、SimSun 等
+    
     # 标题字体
     font_size_title: int = 40                    # 图片主标题字体大小
     font_size_axis_title: int = 36               # X/Y轴标题字体大小
@@ -75,6 +80,10 @@ class PlotConfig(NamedTuple):
     font_size_axis_tick: int = 30                # 坐标轴刻度标签字体大小
     font_size_energy_label: int = 30             # 能量值数值标签字体大小
     font_size_legend: int = 24                   # 图例字体大小
+    
+    # 字体粗细
+    font_weight_legend: str = 'normal'           # 图例字体粗细：'normal' 或 'bold'
+    font_weight_axis_tick: str = 'normal'        # 坐标轴刻度字体粗细：'normal' 或 'bold'
     
     # ========== 3. 图片主标题配置 ==========
     show_title: bool = True                      # 是否显示图片主标题
@@ -135,6 +144,7 @@ class PlotConfig(NamedTuple):
     # ========== 10. 输出配置 ==========
     output_curve: str = "./curve.png"            # curve.png输出路径
     output_state: str = "./state.png"            # state.png输出路径
+    output_combined: str = "./combined.png"      # combined.png输出路径（组合图）
 
 
 class ReactionData:
@@ -763,7 +773,7 @@ def apply_common_style(
     
     # 设置Y轴范围
     plt.ylim(config.y_axis_limits)
-    plt.yticks(fontsize=config.font_size_axis_tick)
+    plt.yticks(fontsize=config.font_size_axis_tick, fontweight=config.font_weight_axis_tick)
     
     # 设置X轴标题
     if config.show_x_title and config.x_title_text:
@@ -774,7 +784,8 @@ def apply_common_style(
         plt.ylabel(config.y_title_text, fontsize=config.font_size_axis_title, fontweight=config.y_title_fontweight)
     
     # 设置X轴刻度
-    plt.xticks(x_positions, data.x_labels, fontsize=config.font_size_axis_tick)
+    plt.xticks(x_positions, data.x_labels, fontsize=config.font_size_axis_tick,
+               fontweight=config.font_weight_axis_tick)
     
     # 调整布局
     plt.tight_layout()
@@ -805,29 +816,36 @@ def plot_curve_style(
     返回:
         输出文件路径
     """
-    plt.figure(figsize=config.figure_size, dpi=config.dpi)
+    # 使用全局字体设置（在 rc_context 内完成绘图，避免影响其他图片）
+    rc_params = {
+        'font.family': config.font_family,
+        'axes.unicode_minus': False
+    }
     
-    x_positions = None
-    for y_path, color, label in zip(data.y_values, data.colors, data.path_labels):
-        x_positions = draw_line_curve(y_path, data.x_labels, color,
-                                      label, show_text, config)
-    
-    if x_positions:
-        apply_common_style(data, x_positions, config, show_title=True)
-    
-    # 添加图例（仅在curve.png中显示）
-    if config.show_legend:
-        legend_kwargs = {
-            'loc': config.legend_loc,
-            'fontsize': config.font_size_legend,
-            'frameon': config.legend_frameon,
-        }
-        if config.legend_bbox_to_anchor is not None:
-            legend_kwargs['bbox_to_anchor'] = config.legend_bbox_to_anchor
-        plt.legend(**legend_kwargs)
-    
-    plt.savefig(config.output_curve)
-    plt.close()
+    with plt.rc_context(rc_params):
+        plt.figure(figsize=config.figure_size, dpi=config.dpi)
+        
+        x_positions = None
+        for y_path, color, label in zip(data.y_values, data.colors, data.path_labels):
+            x_positions = draw_line_curve(y_path, data.x_labels, color,
+                                          label, show_text, config)
+        
+        if x_positions:
+            apply_common_style(data, x_positions, config, show_title=True)
+        
+        # 添加图例（仅在curve.png中显示）
+        if config.show_legend:
+            legend_kwargs = {
+                'loc': config.legend_loc,
+                'prop': {'size': config.font_size_legend, 'weight': config.font_weight_legend},
+                'frameon': config.legend_frameon,
+            }
+            if config.legend_bbox_to_anchor is not None:
+                legend_kwargs['bbox_to_anchor'] = config.legend_bbox_to_anchor
+            plt.legend(**legend_kwargs)
+        
+        plt.savefig(config.output_curve)
+        plt.close()
     
     return config.output_curve
 
@@ -854,96 +872,170 @@ def plot_state_style(
     返回:
         输出文件路径
     """
-    plt.figure(figsize=config.figure_size, dpi=config.dpi)
+    # 使用全局字体设置（在 rc_context 内完成绘图，避免影响其他图片）
+    rc_params = {
+        'font.family': config.font_family,
+        'axes.unicode_minus': False
+    }
     
-    # 计算散点图的x轴位置
-    x_scatter_positions = [x * 2 - 0.5 for x in data.x_coords]
-    
-    # 绘制分段实线和散点
-    for y_path, color, label in zip(data.y_values, data.colors, data.path_labels):
-        # 绘制分段实线（台阶）
-        x_doubled = []
-        y_doubled = []
-        for i, yi in enumerate(y_path):
-            if yi != "":
-                x_doubled.extend([2 * i + 1, 2 * i + 2])
-                y_doubled.extend([yi, yi])
+    with plt.rc_context(rc_params):
+        plt.figure(figsize=config.figure_size, dpi=config.dpi)
         
-        for i in range(0, len(y_doubled), 2):
-            plt.plot(
-                [x_doubled[i], x_doubled[i+1]], 
-                [y_doubled[i], y_doubled[i+1]], 
-                linestyle='-', 
-                linewidth=config.line_width_segment, 
-                color=color
-            )
+        # 计算散点图的x轴位置
+        x_scatter_positions = [x * 2 - 0.5 for x in data.x_coords]
         
-        # 收集有效数据点用于散点和连接
-        # 记录每个台阶的头部(左端)、中部(散点位置)、尾部(右端)坐标
-        step_positions = []  # (头部x, 中部x, 尾部x, y值)
-        for i, (x_pos, y_val) in enumerate(zip(x_scatter_positions, y_path)):
-            if y_val != "":
-                head_x = 2 * i + 1      # 台阶左端（头部）
-                tail_x = 2 * i + 2      # 台阶右端（尾部）
-                mid_x = x_pos           # 台阶中部（散点位置）
-                step_positions.append((head_x, mid_x, tail_x, float(y_val)))
-                
-                # 显示能量值标签（在中部位置显示）
-                if config.show_energy_labels_state:
-                    x_label_pos = mid_x + config.label_offset_x_state
-                    y_label_pos = float(y_val) + config.label_offset_y_state
-                    plt.text(x_label_pos, y_label_pos,
-                            f"{float(y_val):.2f}", 
-                            fontsize=config.font_size_energy_label, 
-                            color=color, 
-                            ha=config.label_ha_state)
-        
-        # 用虚线连接台阶：前一个台阶的尾部连接当前台阶的头部
-        if config.connect_steps and len(step_positions) >= 2:
-            for i in range(len(step_positions) - 1):
-                # 前一个台阶的尾部
-                prev_tail_x = step_positions[i][2]
-                prev_y = step_positions[i][3]
-                # 当前台阶的头部
-                curr_head_x = step_positions[i+1][0]
-                curr_y = step_positions[i+1][3]
-                
+        # 绘制分段实线和散点
+        for y_path, color, label in zip(data.y_values, data.colors, data.path_labels):
+            # 绘制分段实线（台阶）
+            x_doubled = []
+            y_doubled = []
+            for i, yi in enumerate(y_path):
+                if yi != "":
+                    x_doubled.extend([2 * i + 1, 2 * i + 2])
+                    y_doubled.extend([yi, yi])
+            
+            for i in range(0, len(y_doubled), 2):
                 plt.plot(
-                    [prev_tail_x, curr_head_x], 
-                    [prev_y, curr_y], 
-                    linestyle=config.line_style_connector, 
-                    linewidth=config.line_width_connector, 
-                    color=color,
-                    alpha=0.6  # 虚线稍微透明
+                    [x_doubled[i], x_doubled[i+1]], 
+                    [y_doubled[i], y_doubled[i+1]], 
+                    linestyle='-', 
+                    linewidth=config.line_width_segment, 
+                    color=color
                 )
+            
+            # 收集有效数据点用于散点和连接
+            # 记录每个台阶的头部(左端)、中部(散点位置)、尾部(右端)坐标
+            step_positions = []  # (头部x, 中部x, 尾部x, y值)
+            for i, (x_pos, y_val) in enumerate(zip(x_scatter_positions, y_path)):
+                if y_val != "":
+                    head_x = 2 * i + 1      # 台阶左端（头部）
+                    tail_x = 2 * i + 2      # 台阶右端（尾部）
+                    mid_x = x_pos           # 台阶中部（散点位置）
+                    step_positions.append((head_x, mid_x, tail_x, float(y_val)))
+                    
+                    # 显示能量值标签（在中部位置显示）
+                    if config.show_energy_labels_state:
+                        x_label_pos = mid_x + config.label_offset_x_state
+                        y_label_pos = float(y_val) + config.label_offset_y_state
+                        plt.text(x_label_pos, y_label_pos,
+                                f"{float(y_val):.2f}", 
+                                fontsize=config.font_size_energy_label, 
+                                color=color, 
+                                ha=config.label_ha_state)
+            
+            # 用虚线连接台阶：前一个台阶的尾部连接当前台阶的头部
+            if config.connect_steps and len(step_positions) >= 2:
+                for i in range(len(step_positions) - 1):
+                    # 前一个台阶的尾部
+                    prev_tail_x = step_positions[i][2]
+                    prev_y = step_positions[i][3]
+                    # 当前台阶的头部
+                    curr_head_x = step_positions[i+1][0]
+                    curr_y = step_positions[i+1][3]
+                    
+                    plt.plot(
+                        [prev_tail_x, curr_head_x], 
+                        [prev_y, curr_y], 
+                        linestyle=config.line_style_connector, 
+                        linewidth=config.line_width_connector, 
+                        color=color,
+                        alpha=0.6  # 虚线稍微透明
+                    )
+            
+            # 绘制散点（在中部位置，用于图例）
+            x_scatter = [pos[1] for pos in step_positions]
+            y_scatter = [pos[3] for pos in step_positions]
+            plt.scatter(x_scatter, y_scatter, linewidth=6, color=color,
+                       label=label if config.show_legend_state else None, 
+                       marker='_', s=1200)
         
-        # 绘制散点（在中部位置，用于图例）
-        x_scatter = [pos[1] for pos in step_positions]
-        y_scatter = [pos[3] for pos in step_positions]
-        plt.scatter(x_scatter, y_scatter, linewidth=6, color=color,
-                   label=label if config.show_legend_state else None, 
-                   marker='_', s=1200)
-    
-    # 设置X轴刻度位置
-    x_tick_positions = [x * 2 - 0.5 for x in data.x_coords]
-    
-    apply_common_style(data, x_tick_positions, config, show_title=True)
-    
-    # 添加图例
-    if config.show_legend_state:
-        legend_kwargs = {
-            'loc': config.legend_loc,
-            'fontsize': config.font_size_legend,
-            'frameon': config.legend_frameon,
-        }
-        if config.legend_bbox_to_anchor is not None:
-            legend_kwargs['bbox_to_anchor'] = config.legend_bbox_to_anchor
-        plt.legend(**legend_kwargs)
-    
-    plt.savefig(config.output_state)
-    plt.close()
+        # 设置X轴刻度位置
+        x_tick_positions = [x * 2 - 0.5 for x in data.x_coords]
+        
+        apply_common_style(data, x_tick_positions, config, show_title=True)
+        
+        # 添加图例
+        if config.show_legend_state:
+            legend_kwargs = {
+                'loc': config.legend_loc,
+                'prop': {'size': config.font_size_legend, 'weight': config.font_weight_legend},
+                'frameon': config.legend_frameon,
+            }
+            if config.legend_bbox_to_anchor is not None:
+                legend_kwargs['bbox_to_anchor'] = config.legend_bbox_to_anchor
+            plt.legend(**legend_kwargs)
+        
+        plt.savefig(config.output_state)
+        plt.close()
     
     return config.output_state
+
+
+def plot_combined_style(
+    data: ReactionData,
+    show_text: bool,
+    config: PlotConfig
+) -> str:
+    """
+    生成组合风格能垒图（curve 曲线 + 非 TS 状态粗横线）
+    
+    在 curve 图的基础上，将除过渡态（TS）以外的状态的水平横线
+    加粗为 state 图的线宽，TS 状态保持尖峰形态。
+    
+    参数:
+        data: 反应数据
+        show_text: 是否显示能量值文本（使用 curve 图的标签位置配置）
+        config: 绘图配置
+    
+    返回:
+        输出文件路径
+    """
+    # 使用全局字体设置（在 rc_context 内完成绘图，避免影响其他图片）
+    rc_params = {
+        'font.family': config.font_family,
+        'axes.unicode_minus': False
+    }
+    
+    with plt.rc_context(rc_params):
+        plt.figure(figsize=config.figure_size, dpi=config.dpi)
+        
+        x_positions = None
+        for y_path, color, label in zip(data.y_values, data.colors, data.path_labels):
+            # 1. 绘制平滑曲线（同 curve 图）
+            x_positions = draw_line_curve(y_path, data.x_labels, color,
+                                          label, show_text, config)
+            
+            # 2. 叠加非 TS 状态的粗水平线（同 state 图的线宽）
+            for i, (y_val, x_label) in enumerate(zip(y_path, data.x_labels)):
+                if y_val == "":
+                    continue
+                is_ts = re.match(r"^TS", x_label) is not None
+                if not is_ts:
+                    x_left = x_positions[i] - 0.5
+                    x_right = x_positions[i] + 0.5
+                    y = float(y_val)
+                    plt.plot([x_left, x_right], [y, y],
+                             linestyle='-', linewidth=config.line_width_segment,
+                             color=color)
+        
+        if x_positions:
+            apply_common_style(data, x_positions, config, show_title=True)
+        
+        # 添加图例（与 curve 图共用设置）
+        if config.show_legend:
+            legend_kwargs = {
+                'loc': config.legend_loc,
+                'prop': {'size': config.font_size_legend, 'weight': config.font_weight_legend},
+                'frameon': config.legend_frameon,
+            }
+            if config.legend_bbox_to_anchor is not None:
+                legend_kwargs['bbox_to_anchor'] = config.legend_bbox_to_anchor
+            plt.legend(**legend_kwargs)
+        
+        plt.savefig(config.output_combined)
+        plt.close()
+    
+    return config.output_combined
 
 
 # ==================== 主入口 ====================
@@ -1017,7 +1109,12 @@ def main() -> int:
         output2 = plot_state_style(data, False, config)
         logger.info(f"  [OK] {output2} 已保存")
         
-        logger.info("\n两张图都已成功生成!")
+        # 生成组合风格图（combined.png，curve 曲线 + 非TS状态粗横线）
+        logger.info("正在生成 combined.png (组合风格)...")
+        output3 = plot_combined_style(data, show_text, config)
+        logger.info(f"  [OK] {output3} 已保存")
+        
+        logger.info("\n三张图都已成功生成!")
         return 0
         
     except FileNotFoundError as e:

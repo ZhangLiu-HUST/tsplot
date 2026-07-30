@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/badge/python-3.11+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
-TSPlot 是一款专业的化学反应路径能量剖面图绘制工具，支持生成两种风格的能垒图：平滑曲线风格（curve）和分段台阶风格（state）。
+TSPlot 是一款专业的化学反应路径能量剖面图绘制工具，支持生成三种风格的能垒图：平滑曲线风格（curve）、分段台阶风格（state）以及二者结合的组合风格（combined，curve 曲线 + 非 TS 状态粗横线）。
 
 ![curve 风格示例](data_template/example_curve.png)
 *curve 风格示例*
@@ -34,13 +34,15 @@ TSPlot 是一款专业的化学反应路径能量剖面图绘制工具，支持�
 
 ## ✨ 功能特性
 
-### 双风格绘图
+### 三种绘图风格
 - **Curve 风格**: 横线 + 平滑余弦曲线，适合展示连续反应路径
 - **State 风格**: 分段实线 + 虚线连接，适合展示离散状态转换
+- **Combined 风格**: curve 曲线 + 非 TS 状态粗横线（TS 保持尖峰），兼顾两者优点
 
 ### 丰富的自定义选项
 - 图像标题、坐标轴标题自定义
-- 字体大小、线宽、颜色配置
+- 全局字体切换（Arial、Microsoft YaHei、Times New Roman、SimHei、SimSun 等）
+- 字体大小、字重（图例、坐标轴刻度可加粗）、线宽、颜色配置
 - 能量数值标签位置微调（X/Y 偏移、对齐方式）
 - 图例位置、边框配置
 - Y 轴范围自动计算或手动设置
@@ -126,9 +128,10 @@ python CLI/tsplot_CLI.py your_data.csv
 
 ### 第三步：查看结果
 
-程序会同时生成两张图片：
+程序会同时生成三张图片：
 - `curve.png` - 平滑曲线风格
 - `state.png` - 分段台阶风格
+- `combined.png` - 组合风格（curve 曲线 + 非 TS 状态粗横线）
 
 ---
 
@@ -145,7 +148,7 @@ python CLI/tsplot_CLI.py your_data.csv
 #### 配置选项
 1. **文件选择**: 导入 CSV 数据文件，或导出内置模板
 2. **标题配置**: 设置图片主标题、X/Y 轴标题
-3. **字体配置**: 调整各类文字大小
+3. **字体配置**: 全局字体切换（含 Arial 等）、各类文字大小、图例/坐标轴刻度字重
 4. **显示配置**: 
    - 能量数值标签显示开关
    - 标签位置微调（X/Y 偏移、对齐方式）
@@ -177,6 +180,7 @@ python CLI/tsplot_CLI.py reaction_data.csv
 #### 输出文件
 - `curve.png` - Curve 风格能量图
 - `state.png` - State 风格能量图
+- `combined.png` - 组合风格能量图
 
 ---
 
@@ -220,12 +224,19 @@ prod.,-0.6,-1.1,-1.6
 figure_size = (20, 15)      # 宽 x 高（英寸）
 dpi = 300                    # 分辨率
 
+# 全局字体（图片中所有文字）
+font_family = "Microsoft YaHei"  # 可选 "Arial"、"Times New Roman"、"SimHei"、"SimSun" 等
+
 # 字体大小
 font_size_title = 40
 font_size_axis_title = 36
 font_size_axis_tick = 30
 font_size_energy_label = 30
 font_size_legend = 24
+
+# 字体粗细（'normal' 或 'bold'）
+font_weight_legend = 'normal'      # 图例
+font_weight_axis_tick = 'normal'   # 坐标轴刻度
 
 # 能量数值标签位置（curve 图）
 label_offset_x_curve = -0.2   # X 偏移（负值向左）
@@ -347,7 +358,7 @@ pip install matplotlib numpy
 
 ### Q4: 如何修改默认输出文件名？
 **A**: 
-- **CLI**: 修改代码中的 `output_curve` 和 `output_state` 配置
+- **CLI**: 修改代码中的 `output_curve`、`output_state` 和 `output_combined` 配置
 - **GUI**: 在"输出配置"区域修改文件名
 
 ### Q5: 支持其他单位吗？
@@ -356,6 +367,12 @@ pip install matplotlib numpy
 ---
 
 ## 🔄 版本历史
+
+### v1.1 (2024-04-02)
+- ✨ 新增 combined 组合风格（curve 曲线 + 非 TS 状态粗横线），GUI/CLI 均支持
+- 🔤 新增全局字体切换（Arial、Microsoft YaHei、Times New Roman、SimHei、SimSun）
+- 🔠 新增图例、坐标轴刻度字体粗细调节
+- 🖥️ GUI 预览区与导出功能同步支持三种风格
 
 ### v1.0 (2024-04-02)
 - ✨ 初始发布

@@ -93,11 +93,14 @@ class PlotConfig:
         self.dpi = 300
         
         # 字体配置
+        self.font_family = "Microsoft YaHei"  # 全局字体（影响标题、坐标轴、图例等）
         self.font_size_title = 40
         self.font_size_axis_title = 36
         self.font_size_axis_tick = 30
         self.font_size_energy_label = 30
         self.font_size_legend = 24
+        self.font_weight_legend = 'normal'      # 图例字体粗细
+        self.font_weight_axis_tick = 'normal'   # 坐标轴刻度字体粗细
         
         # 图片主标题配置
         self.show_title = True
@@ -299,7 +302,7 @@ def get_y_range(y_values):
 # ==================== 图片查看窗口 ====================
 class ImageViewerWindow:
     """独立窗口用于放大查看图片"""
-    def __init__(self, parent, fig_curve, fig_state):
+    def __init__(self, parent, fig_curve, fig_state, fig_combined):
         self.window = tk.Toplevel(parent)
         self.window.title("图片查看器 - 点击标签切换")
         self.window.geometry("1200x900")
@@ -331,6 +334,17 @@ class ImageViewerWindow:
         toolbar_state = NavigationToolbar2Tk(canvas_state, state_frame)
         toolbar_state.update()
         
+        # 组合图页面
+        combined_frame = ttk.Frame(notebook)
+        notebook.add(combined_frame, text="组合图")
+        
+        canvas_combined = FigureCanvasTkAgg(fig_combined, master=combined_frame)
+        canvas_combined.draw()
+        canvas_combined.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        
+        toolbar_combined = NavigationToolbar2Tk(canvas_combined, combined_frame)
+        toolbar_combined.update()
+        
         # 关闭按钮
         ttk.Button(self.window, text="关闭", command=self.window.destroy).pack(pady=5)
 
@@ -353,8 +367,10 @@ class PlotGUI:
         self.current_config = None
         self.fig_curve = None
         self.fig_state = None
+        self.fig_combined = None
         self.canvas_curve = None
         self.canvas_state = None
+        self.canvas_combined = None
         
         # 创建配置对象
         self.config = PlotConfig()
@@ -459,6 +475,11 @@ class PlotGUI:
         self.state_name = tk.StringVar(value="state图")
         ttk.Entry(output_frame, textvariable=self.state_name, width=25).grid(row=out_row+1, column=0, sticky=tk.W, pady=2)
         
+        out_row += 2
+        ttk.Label(output_frame, text="组合图文件名:").grid(row=out_row, column=0, sticky=tk.W, pady=2)
+        self.combined_name = tk.StringVar(value="组合图")
+        ttk.Entry(output_frame, textvariable=self.combined_name, width=25).grid(row=out_row+1, column=0, sticky=tk.W, pady=2)
+        
         row += 1
         
         # ========== 按钮区域 ==========
@@ -494,7 +515,7 @@ class PlotGUI:
         right_frame.rowconfigure(0, weight=1)
         right_frame.columnconfigure(0, weight=1)
         
-        # 创建Notebook用于显示两张图
+        # 创建Notebook用于显示三张图
         self.plot_notebook = ttk.Notebook(right_frame)
         self.plot_notebook.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
@@ -506,6 +527,10 @@ class PlotGUI:
         self.state_display_frame = ttk.Frame(self.plot_notebook)
         self.plot_notebook.add(self.state_display_frame, text="state图预览")
         
+        # 组合图显示页面
+        self.combined_display_frame = ttk.Frame(self.plot_notebook)
+        self.plot_notebook.add(self.combined_display_frame, text="组合图预览")
+        
         # 放大查看按钮
         zoom_btn = ttk.Button(right_frame, text="🔍 放大查看", command=self.open_image_viewer, width=15)
         zoom_btn.grid(row=1, column=0, pady=5)
@@ -516,7 +541,7 @@ class PlotGUI:
     
     def show_initial_message(self):
         """显示初始提示信息"""
-        for frame in [self.curve_display_frame, self.state_display_frame]:
+        for frame in [self.curve_display_frame, self.state_display_frame, self.combined_display_frame]:
             label = ttk.Label(
                 frame, 
                 text="点击「开始绘图」按钮生成图片\n\n"
@@ -616,6 +641,22 @@ class PlotGUI:
         frame = ttk.Frame(parent, padding="10")
         frame.columnconfigure(1, weight=1)
         
+        row = 0
+        
+        # 全局字体选择
+        ttk.Label(frame, text="全局字体:").grid(row=row, column=0, sticky=tk.W, pady=5)
+        self.font_family_var = tk.StringVar(value=self.config.font_family)
+        combo = ttk.Combobox(frame, textvariable=self.font_family_var,
+                            values=['Microsoft YaHei', 'Arial', 'Times New Roman', 'SimHei', 'SimSun'],
+                            width=20, state="readonly")
+        combo.grid(row=row, column=1, sticky=tk.W, padx=5)
+        self.add_tooltip(combo, "图片中所有文字的全局字体（标题、坐标轴、刻度、标签、图例等），默认 Microsoft YaHei")
+        
+        row += 1
+        ttk.Separator(frame, orient=tk.HORIZONTAL).grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
+        
+        row += 1
+        
         fonts = [
             ("图片主标题字体大小", "font_size_title", 40, "图片顶部主标题的字体大小"),
             ("坐标轴标题字体大小", "font_size_axis_title", 36, "X轴和Y轴标题的字体大小"),
@@ -626,12 +667,35 @@ class PlotGUI:
         
         self.font_vars = {}
         for i, (label, key, default, tooltip) in enumerate(fonts):
-            ttk.Label(frame, text=f"{label}:").grid(row=i, column=0, sticky=tk.W, pady=5)
+            ttk.Label(frame, text=f"{label}:").grid(row=row + i, column=0, sticky=tk.W, pady=5)
             var = tk.IntVar(value=default)
             self.font_vars[key] = var
             spin = ttk.Spinbox(frame, from_=8, to=72, textvariable=var, width=10)
-            spin.grid(row=i, column=1, sticky=tk.W, padx=5)
+            spin.grid(row=row + i, column=1, sticky=tk.W, padx=5)
             self.add_tooltip(spin, tooltip)
+        
+        row += len(fonts)
+        ttk.Separator(frame, orient=tk.HORIZONTAL).grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10)
+        
+        row += 1
+        
+        # 图例字体粗细
+        ttk.Label(frame, text="图例字体粗细:").grid(row=row, column=0, sticky=tk.W, pady=5)
+        self.font_weight_legend_var = tk.StringVar(value=self.config.font_weight_legend)
+        combo = ttk.Combobox(frame, textvariable=self.font_weight_legend_var,
+                            values=['normal', 'bold'], width=15, state="readonly")
+        combo.grid(row=row, column=1, sticky=tk.W, padx=5)
+        self.add_tooltip(combo, "图例文字的粗细程度，默认 normal")
+        
+        row += 1
+        
+        # 坐标轴刻度字体粗细
+        ttk.Label(frame, text="坐标轴刻度字体粗细:").grid(row=row, column=0, sticky=tk.W, pady=5)
+        self.font_weight_axis_tick_var = tk.StringVar(value=self.config.font_weight_axis_tick)
+        combo = ttk.Combobox(frame, textvariable=self.font_weight_axis_tick_var,
+                            values=['normal', 'bold'], width=15, state="readonly")
+        combo.grid(row=row, column=1, sticky=tk.W, padx=5)
+        self.add_tooltip(combo, "坐标轴刻度标签的粗细程度，默认 normal")
         
         return frame
     
@@ -960,7 +1024,10 @@ class PlotGUI:
         """恢复默认设置"""
         if messagebox.askyesno("确认", "确定要恢复所有默认设置吗？"):
             self.config = PlotConfig()
-            # 这里可以添加重置所有界面控件到默认值的逻辑
+            # 重置字体相关控件到默认值
+            self.font_family_var.set(self.config.font_family)
+            self.font_weight_legend_var.set(self.config.font_weight_legend)
+            self.font_weight_axis_tick_var.set(self.config.font_weight_axis_tick)
             messagebox.showinfo("提示", "已恢复默认设置，请重新打开软件生效")
     
     def collect_config(self):
@@ -979,11 +1046,14 @@ class PlotGUI:
         config.y_title_fontweight = self.y_fontweight_var.get()
         
         # 字体配置
+        config.font_family = self.font_family_var.get()
         config.font_size_title = self.font_vars["font_size_title"].get()
         config.font_size_axis_title = self.font_vars["font_size_axis_title"].get()
         config.font_size_axis_tick = self.font_vars["font_size_axis_tick"].get()
         config.font_size_energy_label = self.font_vars["font_size_energy_label"].get()
         config.font_size_legend = self.font_vars["font_size_legend"].get()
+        config.font_weight_legend = self.font_weight_legend_var.get()
+        config.font_weight_axis_tick = self.font_weight_axis_tick_var.get()
         
         # 显示配置
         config.show_energy_labels = self.show_energy_labels_var.get()
@@ -1100,6 +1170,13 @@ Copyright (c) 2023 华中科技大学
             self.fig_state = self.create_state_figure(data, config)
             self.display_state_plot()
             
+            self.status_var.set("正在生成 组合图...")
+            self.root.update()
+            
+            # 生成组合图（返回Figure对象）
+            self.fig_combined = self.create_combined_figure(data, config)
+            self.display_combined_plot()
+            
             self.status_var.set(f"绘图完成！数据来源: {source_name}")
             
         except Exception as e:
@@ -1117,109 +1194,117 @@ Copyright (c) 2023 华中科技大学
             preview_mode: 是否为预览模式（True时使用较低的DPI和较小的尺寸以适应屏幕显示）
         """
         import re
+        import matplotlib as mpl
         
-        if preview_mode:
-            # 预览模式：使用较小的尺寸和较低的DPI，以适应GUI显示
-            preview_figsize = (10, 7.5)  # 屏幕预览尺寸
-            preview_dpi = 100
-            scale_factor = 0.5  # 字体缩放因子
-            
-            fig = Figure(figsize=preview_figsize, dpi=preview_dpi)
-            ax = fig.add_subplot(111)
-            
-            # 预览模式下缩小字体大小
-            font_size_title = int(config.font_size_title * scale_factor)
-            font_size_axis_title = int(config.font_size_axis_title * scale_factor)
-            font_size_axis_tick = int(config.font_size_axis_tick * scale_factor)
-            font_size_energy_label = int(config.font_size_energy_label * scale_factor)
-            font_size_legend = int(config.font_size_legend * scale_factor)
-            line_width_curve = max(1, config.line_width_curve * scale_factor)
-        else:
-            # 导出模式：使用用户配置的高DPI和大尺寸
-            fig = Figure(figsize=config.figure_size, dpi=config.dpi)
-            ax = fig.add_subplot(111)
-            
-            font_size_title = config.font_size_title
-            font_size_axis_title = config.font_size_axis_title
-            font_size_axis_tick = config.font_size_axis_tick
-            font_size_energy_label = config.font_size_energy_label
-            font_size_legend = config.font_size_legend
-            line_width_curve = config.line_width_curve
+        # 使用全局字体设置（在 rc_context 内完成绘图，避免影响其他 Figure）
+        rc_params = {
+            'font.family': config.font_family,
+            'axes.unicode_minus': False
+        }
         
-        x_positions = None
-        for y_path, color, label in zip(data.y_values, data.colors, data.path_labels):
-            # 绘制曲线逻辑
-            x_processed = []
-            y_processed = []
-            x_pos_list = [i * 2 + 2 for i in range(len(y_path))]
-            
-            for i, (y_val, x_label) in enumerate(zip(y_path, data.x_labels)):
-                if y_val == "":
-                    continue
-                is_ts = re.match(r"^TS", x_label) is not None
-                if is_ts:
-                    y_processed.append(float(y_val))
-                    x_processed.append(x_pos_list[i])
-                else:
-                    y_processed.extend([float(y_val), float(y_val)])
-                    x_processed.extend([x_pos_list[i] - 0.5, x_pos_list[i] + 0.5])
-            
-            # 绘制平滑曲线
-            if len(x_processed) >= 2:
-                x_smooth = []
-                y_smooth = []
-                for i in range(len(x_processed) - 1):
-                    x_segment = np.linspace(x_processed[i], x_processed[i + 1], 
-                                           config.interpolation_points).tolist()
-                    if y_processed[i] < y_processed[i + 1]:
-                        y_segment = generate_cosine_points(
-                            y_processed[i], y_processed[i + 1], "up", config.interpolation_points
-                        )
-                    elif y_processed[i] > y_processed[i + 1]:
-                        y_segment = generate_cosine_points(
-                            y_processed[i + 1], y_processed[i], "down", config.interpolation_points
-                        )
-                    else:
-                        y_segment = np.linspace(y_processed[i], y_processed[i + 1], 
-                                               config.interpolation_points).tolist()
-                    x_smooth.extend(x_segment)
-                    y_smooth.extend(y_segment)
+        with mpl.rc_context(rc_params):
+            if preview_mode:
+                # 预览模式：使用较小的尺寸和较低的DPI，以适应GUI显示
+                preview_figsize = (10, 7.5)  # 屏幕预览尺寸
+                preview_dpi = 100
+                scale_factor = 0.5  # 字体缩放因子
                 
-                ax.plot(x_smooth, y_smooth, linestyle='-', 
-                        linewidth=line_width_curve, color=color, label=label)
+                fig = Figure(figsize=preview_figsize, dpi=preview_dpi)
+                ax = fig.add_subplot(111)
+                
+                # 预览模式下缩小字体大小
+                font_size_title = int(config.font_size_title * scale_factor)
+                font_size_axis_title = int(config.font_size_axis_title * scale_factor)
+                font_size_axis_tick = int(config.font_size_axis_tick * scale_factor)
+                font_size_energy_label = int(config.font_size_energy_label * scale_factor)
+                font_size_legend = int(config.font_size_legend * scale_factor)
+                line_width_curve = max(1, config.line_width_curve * scale_factor)
+            else:
+                # 导出模式：使用用户配置的高DPI和大尺寸
+                fig = Figure(figsize=config.figure_size, dpi=config.dpi)
+                ax = fig.add_subplot(111)
+                
+                font_size_title = config.font_size_title
+                font_size_axis_title = config.font_size_axis_title
+                font_size_axis_tick = config.font_size_axis_tick
+                font_size_energy_label = config.font_size_energy_label
+                font_size_legend = config.font_size_legend
+                line_width_curve = config.line_width_curve
             
-            # 添加能量值标签
-            if config.show_energy_labels:
-                for i, y_val in enumerate(y_path):
-                    if y_val != "":
-                        x_pos = x_pos_list[i] + config.label_offset_x_curve
-                        y_pos = float(y_val) + config.label_offset_y_curve
-                        ax.text(x_pos, y_pos,
-                               f"{float(y_val):.2f}", 
-                               fontsize=font_size_energy_label, 
-                               color=color,
-                               ha=config.label_ha_curve)
+            x_positions = None
+            for y_path, color, label in zip(data.y_values, data.colors, data.path_labels):
+                # 绘制曲线逻辑
+                x_processed = []
+                y_processed = []
+                x_pos_list = [i * 2 + 2 for i in range(len(y_path))]
+                
+                for i, (y_val, x_label) in enumerate(zip(y_path, data.x_labels)):
+                    if y_val == "":
+                        continue
+                    is_ts = re.match(r"^TS", x_label) is not None
+                    if is_ts:
+                        y_processed.append(float(y_val))
+                        x_processed.append(x_pos_list[i])
+                    else:
+                        y_processed.extend([float(y_val), float(y_val)])
+                        x_processed.extend([x_pos_list[i] - 0.5, x_pos_list[i] + 0.5])
+                
+                # 绘制平滑曲线
+                if len(x_processed) >= 2:
+                    x_smooth = []
+                    y_smooth = []
+                    for i in range(len(x_processed) - 1):
+                        x_segment = np.linspace(x_processed[i], x_processed[i + 1], 
+                                               config.interpolation_points).tolist()
+                        if y_processed[i] < y_processed[i + 1]:
+                            y_segment = generate_cosine_points(
+                                y_processed[i], y_processed[i + 1], "up", config.interpolation_points
+                            )
+                        elif y_processed[i] > y_processed[i + 1]:
+                            y_segment = generate_cosine_points(
+                                y_processed[i + 1], y_processed[i], "down", config.interpolation_points
+                            )
+                        else:
+                            y_segment = np.linspace(y_processed[i], y_processed[i + 1], 
+                                                   config.interpolation_points).tolist()
+                        x_smooth.extend(x_segment)
+                        y_smooth.extend(y_segment)
+                    
+                    ax.plot(x_smooth, y_smooth, linestyle='-', 
+                            linewidth=line_width_curve, color=color, label=label)
+                
+                # 添加能量值标签
+                if config.show_energy_labels:
+                    for i, y_val in enumerate(y_path):
+                        if y_val != "":
+                            x_pos = x_pos_list[i] + config.label_offset_x_curve
+                            y_pos = float(y_val) + config.label_offset_y_curve
+                            ax.text(x_pos, y_pos,
+                                   f"{float(y_val):.2f}", 
+                                   fontsize=font_size_energy_label, 
+                                   color=color,
+                                   ha=config.label_ha_curve)
+                
+                x_positions = x_pos_list
             
-            x_positions = x_pos_list
-        
-        # 应用样式（使用调整后的字体大小）
-        self.apply_common_style_to_ax(ax, data, x_positions, config, 
-                                      font_size_title, font_size_axis_title, 
-                                      font_size_axis_tick, preview_mode)
-        
-        # 添加图例
-        if config.show_legend:
-            legend_kwargs = {
-                'loc': config.legend_loc,
-                'fontsize': font_size_legend,
-                'frameon': config.legend_frameon,
-            }
-            if config.legend_bbox_to_anchor is not None:
-                legend_kwargs['bbox_to_anchor'] = config.legend_bbox_to_anchor
-            ax.legend(**legend_kwargs)
-        
-        fig.tight_layout()
-        return fig
+            # 应用样式（使用调整后的字体大小）
+            self.apply_common_style_to_ax(ax, data, x_positions, config, 
+                                          font_size_title, font_size_axis_title, 
+                                          font_size_axis_tick, preview_mode)
+            
+            # 添加图例
+            if config.show_legend:
+                legend_kwargs = {
+                    'loc': config.legend_loc,
+                    'prop': {'size': font_size_legend, 'weight': config.font_weight_legend},
+                    'frameon': config.legend_frameon,
+                }
+                if config.legend_bbox_to_anchor is not None:
+                    legend_kwargs['bbox_to_anchor'] = config.legend_bbox_to_anchor
+                ax.legend(**legend_kwargs)
+            
+            fig.tight_layout()
+            return fig
     
     def create_state_figure(self, data, config, preview_mode=True):
         """创建state图Figure对象
@@ -1229,129 +1314,273 @@ Copyright (c) 2023 华中科技大学
             config: 配置对象
             preview_mode: 是否为预览模式（True时使用较低的DPI和较小的尺寸以适应屏幕显示）
         """
-        if preview_mode:
-            # 预览模式：使用较小的尺寸和较低的DPI，以适应GUI显示
-            preview_figsize = (10, 7.5)  # 屏幕预览尺寸
-            preview_dpi = 100
-            scale_factor = 0.5  # 字体缩放因子
-            
-            fig = Figure(figsize=preview_figsize, dpi=preview_dpi)
-            ax = fig.add_subplot(111)
-            
-            # 预览模式下缩小字体大小
-            font_size_title = int(config.font_size_title * scale_factor)
-            font_size_axis_title = int(config.font_size_axis_title * scale_factor)
-            font_size_axis_tick = int(config.font_size_axis_tick * scale_factor)
-            font_size_energy_label = int(config.font_size_energy_label * scale_factor)
-            font_size_legend = int(config.font_size_legend * scale_factor)
-            line_width_segment = max(1, config.line_width_segment * scale_factor)
-            line_width_connector = max(0.5, config.line_width_connector * scale_factor)
-        else:
-            # 导出模式：使用用户配置的高DPI和大尺寸
-            fig = Figure(figsize=config.figure_size, dpi=config.dpi)
-            ax = fig.add_subplot(111)
-            
-            font_size_title = config.font_size_title
-            font_size_axis_title = config.font_size_axis_title
-            font_size_axis_tick = config.font_size_axis_tick
-            font_size_energy_label = config.font_size_energy_label
-            font_size_legend = config.font_size_legend
-            line_width_segment = config.line_width_segment
-            line_width_connector = config.line_width_connector
+        import matplotlib as mpl
         
-        # 计算散点图的x轴位置
-        x_scatter_positions = [x * 2 - 0.5 for x in data.x_coords]
+        # 使用全局字体设置（在 rc_context 内完成绘图，避免影响其他 Figure）
+        rc_params = {
+            'font.family': config.font_family,
+            'axes.unicode_minus': False
+        }
         
-        # 绘制分段实线和散点
-        for y_path, color, label in zip(data.y_values, data.colors, data.path_labels):
-            # 绘制分段实线（台阶）
-            x_doubled = []
-            y_doubled = []
-            for i, yi in enumerate(y_path):
-                if yi != "":
-                    x_doubled.extend([2 * i + 1, 2 * i + 2])
-                    y_doubled.extend([yi, yi])
-            
-            for i in range(0, len(y_doubled), 2):
-                ax.plot(
-                    [x_doubled[i], x_doubled[i+1]], 
-                    [y_doubled[i], y_doubled[i+1]], 
-                    linestyle='-', 
-                    linewidth=line_width_segment, 
-                    color=color
-                )
-            
-            # 收集有效数据点用于散点和连接
-            step_positions = []  # (头部x, 中部x, 尾部x, y值)
-            for i, (x_pos, y_val) in enumerate(zip(x_scatter_positions, y_path)):
-                if y_val != "":
-                    head_x = 2 * i + 1      # 台阶左端（头部）
-                    tail_x = 2 * i + 2      # 台阶右端（尾部）
-                    mid_x = x_pos           # 台阶中部（散点位置）
-                    step_positions.append((head_x, mid_x, tail_x, float(y_val)))
-                    
-                    # 显示能量值标签
-                    if config.show_energy_labels_state:
-                        x_label_pos = mid_x + config.label_offset_x_state
-                        y_label_pos = float(y_val) + config.label_offset_y_state
-                        ax.text(x_label_pos, y_label_pos,
-                               f"{float(y_val):.2f}", 
-                               fontsize=font_size_energy_label, 
-                               color=color, 
-                               ha=config.label_ha_state)
-            
-            # 用虚线连接台阶
-            if config.connect_steps and len(step_positions) >= 2:
-                for i in range(len(step_positions) - 1):
-                    prev_tail_x = step_positions[i][2]
-                    prev_y = step_positions[i][3]
-                    curr_head_x = step_positions[i+1][0]
-                    curr_y = step_positions[i+1][3]
-                    
-                    ax.plot(
-                        [prev_tail_x, curr_head_x], 
-                        [prev_y, curr_y], 
-                        linestyle=config.line_style_connector, 
-                        linewidth=line_width_connector, 
-                        color=color,
-                        alpha=0.6
-                    )
-            
-            # 绘制散点（用于图例）
-            x_scatter = [pos[1] for pos in step_positions]
-            y_scatter = [pos[3] for pos in step_positions]
-            # 预览模式下调整散点大小和线宽
+        with mpl.rc_context(rc_params):
             if preview_mode:
-                scatter_s = 400  # 预览模式使用更小的散点
-                scatter_linewidth = 3  # 预览模式使用更细的线条
+                # 预览模式：使用较小的尺寸和较低的DPI，以适应GUI显示
+                preview_figsize = (10, 7.5)  # 屏幕预览尺寸
+                preview_dpi = 100
+                scale_factor = 0.5  # 字体缩放因子
+                
+                fig = Figure(figsize=preview_figsize, dpi=preview_dpi)
+                ax = fig.add_subplot(111)
+                
+                # 预览模式下缩小字体大小
+                font_size_title = int(config.font_size_title * scale_factor)
+                font_size_axis_title = int(config.font_size_axis_title * scale_factor)
+                font_size_axis_tick = int(config.font_size_axis_tick * scale_factor)
+                font_size_energy_label = int(config.font_size_energy_label * scale_factor)
+                font_size_legend = int(config.font_size_legend * scale_factor)
+                line_width_segment = max(1, config.line_width_segment * scale_factor)
+                line_width_connector = max(0.5, config.line_width_connector * scale_factor)
             else:
-                scatter_s = 1200  # 导出模式使用原始大小
-                scatter_linewidth = 6  # 导出模式使用原始线宽
-            ax.scatter(x_scatter, y_scatter, linewidth=scatter_linewidth, color=color,
-                       label=label if config.show_legend_state else None, 
-                       marker='_', s=scatter_s)
+                # 导出模式：使用用户配置的高DPI和大尺寸
+                fig = Figure(figsize=config.figure_size, dpi=config.dpi)
+                ax = fig.add_subplot(111)
+                
+                font_size_title = config.font_size_title
+                font_size_axis_title = config.font_size_axis_title
+                font_size_axis_tick = config.font_size_axis_tick
+                font_size_energy_label = config.font_size_energy_label
+                font_size_legend = config.font_size_legend
+                line_width_segment = config.line_width_segment
+                line_width_connector = config.line_width_connector
+            
+            # 计算散点图的x轴位置
+            x_scatter_positions = [x * 2 - 0.5 for x in data.x_coords]
+            
+            # 绘制分段实线和散点
+            for y_path, color, label in zip(data.y_values, data.colors, data.path_labels):
+                # 绘制分段实线（台阶）
+                x_doubled = []
+                y_doubled = []
+                for i, yi in enumerate(y_path):
+                    if yi != "":
+                        x_doubled.extend([2 * i + 1, 2 * i + 2])
+                        y_doubled.extend([yi, yi])
+                
+                for i in range(0, len(y_doubled), 2):
+                    ax.plot(
+                        [x_doubled[i], x_doubled[i+1]], 
+                        [y_doubled[i], y_doubled[i+1]], 
+                        linestyle='-', 
+                        linewidth=line_width_segment, 
+                        color=color
+                    )
+                
+                # 收集有效数据点用于散点和连接
+                step_positions = []  # (头部x, 中部x, 尾部x, y值)
+                for i, (x_pos, y_val) in enumerate(zip(x_scatter_positions, y_path)):
+                    if y_val != "":
+                        head_x = 2 * i + 1      # 台阶左端（头部）
+                        tail_x = 2 * i + 2      # 台阶右端（尾部）
+                        mid_x = x_pos           # 台阶中部（散点位置）
+                        step_positions.append((head_x, mid_x, tail_x, float(y_val)))
+                        
+                        # 显示能量值标签
+                        if config.show_energy_labels_state:
+                            x_label_pos = mid_x + config.label_offset_x_state
+                            y_label_pos = float(y_val) + config.label_offset_y_state
+                            ax.text(x_label_pos, y_label_pos,
+                                   f"{float(y_val):.2f}", 
+                                   fontsize=font_size_energy_label, 
+                                   color=color, 
+                                   ha=config.label_ha_state)
+                
+                # 用虚线连接台阶
+                if config.connect_steps and len(step_positions) >= 2:
+                    for i in range(len(step_positions) - 1):
+                        prev_tail_x = step_positions[i][2]
+                        prev_y = step_positions[i][3]
+                        curr_head_x = step_positions[i+1][0]
+                        curr_y = step_positions[i+1][3]
+                        
+                        ax.plot(
+                            [prev_tail_x, curr_head_x], 
+                            [prev_y, curr_y], 
+                            linestyle=config.line_style_connector, 
+                            linewidth=line_width_connector, 
+                            color=color,
+                            alpha=0.6
+                        )
+                
+                # 绘制散点（用于图例）
+                x_scatter = [pos[1] for pos in step_positions]
+                y_scatter = [pos[3] for pos in step_positions]
+                # 预览模式下调整散点大小和线宽
+                if preview_mode:
+                    scatter_s = 400  # 预览模式使用更小的散点
+                    scatter_linewidth = 3  # 预览模式使用更细的线条
+                else:
+                    scatter_s = 1200  # 导出模式使用原始大小
+                    scatter_linewidth = 6  # 导出模式使用原始线宽
+                ax.scatter(x_scatter, y_scatter, linewidth=scatter_linewidth, color=color,
+                           label=label if config.show_legend_state else None, 
+                           marker='_', s=scatter_s)
+            
+            # 设置X轴刻度位置
+            x_tick_positions = [x * 2 - 0.5 for x in data.x_coords]
+            
+            # 应用样式（使用调整后的字体大小）
+            self.apply_common_style_to_ax(ax, data, x_tick_positions, config,
+                                          font_size_title, font_size_axis_title,
+                                          font_size_axis_tick, preview_mode)
+            
+            # 添加图例
+            if config.show_legend_state:
+                legend_kwargs = {
+                    'loc': config.legend_loc_state,  # 使用独立的state图图例位置
+                    'prop': {'size': font_size_legend, 'weight': config.font_weight_legend},
+                    'frameon': config.legend_frameon,
+                }
+                if config.legend_bbox_to_anchor is not None:
+                    legend_kwargs['bbox_to_anchor'] = config.legend_bbox_to_anchor
+                ax.legend(**legend_kwargs)
+            
+            fig.tight_layout()
+            return fig
+    
+    def create_combined_figure(self, data, config, preview_mode=True):
+        """创建组合图Figure对象（curve曲线 + 非TS状态粗横线）
         
-        # 设置X轴刻度位置
-        x_tick_positions = [x * 2 - 0.5 for x in data.x_coords]
+        参数:
+            data: 反应数据
+            config: 配置对象
+            preview_mode: 是否为预览模式（True时使用较低的DPI和较小的尺寸以适应屏幕显示）
+        """
+        import re
+        import matplotlib as mpl
         
-        # 应用样式（使用调整后的字体大小）
-        self.apply_common_style_to_ax(ax, data, x_tick_positions, config,
-                                      font_size_title, font_size_axis_title,
-                                      font_size_axis_tick, preview_mode)
+        # 使用全局字体设置（在 rc_context 内完成绘图，避免影响其他 Figure）
+        rc_params = {
+            'font.family': config.font_family,
+            'axes.unicode_minus': False
+        }
         
-        # 添加图例
-        if config.show_legend_state:
-            legend_kwargs = {
-                'loc': config.legend_loc_state,  # 使用独立的state图图例位置
-                'fontsize': font_size_legend,
-                'frameon': config.legend_frameon,
-            }
-            if config.legend_bbox_to_anchor is not None:
-                legend_kwargs['bbox_to_anchor'] = config.legend_bbox_to_anchor
-            ax.legend(**legend_kwargs)
-        
-        fig.tight_layout()
-        return fig
+        with mpl.rc_context(rc_params):
+            if preview_mode:
+                # 预览模式：使用较小的尺寸和较低的DPI，以适应GUI显示
+                preview_figsize = (10, 7.5)  # 屏幕预览尺寸
+                preview_dpi = 100
+                scale_factor = 0.5  # 字体缩放因子
+                
+                fig = Figure(figsize=preview_figsize, dpi=preview_dpi)
+                ax = fig.add_subplot(111)
+                
+                # 预览模式下缩小字体大小
+                font_size_title = int(config.font_size_title * scale_factor)
+                font_size_axis_title = int(config.font_size_axis_title * scale_factor)
+                font_size_axis_tick = int(config.font_size_axis_tick * scale_factor)
+                font_size_energy_label = int(config.font_size_energy_label * scale_factor)
+                font_size_legend = int(config.font_size_legend * scale_factor)
+                line_width_curve = max(1, config.line_width_curve * scale_factor)
+                line_width_segment = max(1, config.line_width_segment * scale_factor)
+            else:
+                # 导出模式：使用用户配置的高DPI和大尺寸
+                fig = Figure(figsize=config.figure_size, dpi=config.dpi)
+                ax = fig.add_subplot(111)
+                
+                font_size_title = config.font_size_title
+                font_size_axis_title = config.font_size_axis_title
+                font_size_axis_tick = config.font_size_axis_tick
+                font_size_energy_label = config.font_size_energy_label
+                font_size_legend = config.font_size_legend
+                line_width_curve = config.line_width_curve
+                line_width_segment = config.line_width_segment
+            
+            x_positions = None
+            for y_path, color, label in zip(data.y_values, data.colors, data.path_labels):
+                # 1. 绘制平滑曲线（同 curve 图）
+                x_processed = []
+                y_processed = []
+                x_pos_list = [i * 2 + 2 for i in range(len(y_path))]
+                
+                for i, (y_val, x_label) in enumerate(zip(y_path, data.x_labels)):
+                    if y_val == "":
+                        continue
+                    is_ts = re.match(r"^TS", x_label) is not None
+                    if is_ts:
+                        y_processed.append(float(y_val))
+                        x_processed.append(x_pos_list[i])
+                    else:
+                        y_processed.extend([float(y_val), float(y_val)])
+                        x_processed.extend([x_pos_list[i] - 0.5, x_pos_list[i] + 0.5])
+                
+                # 绘制平滑曲线
+                if len(x_processed) >= 2:
+                    x_smooth = []
+                    y_smooth = []
+                    for i in range(len(x_processed) - 1):
+                        x_segment = np.linspace(x_processed[i], x_processed[i + 1], 
+                                               config.interpolation_points).tolist()
+                        if y_processed[i] < y_processed[i + 1]:
+                            y_segment = generate_cosine_points(
+                                y_processed[i], y_processed[i + 1], "up", config.interpolation_points
+                            )
+                        elif y_processed[i] > y_processed[i + 1]:
+                            y_segment = generate_cosine_points(
+                                y_processed[i + 1], y_processed[i], "down", config.interpolation_points
+                            )
+                        else:
+                            y_segment = np.linspace(y_processed[i], y_processed[i + 1], 
+                                                   config.interpolation_points).tolist()
+                        x_smooth.extend(x_segment)
+                        y_smooth.extend(y_segment)
+                    
+                    ax.plot(x_smooth, y_smooth, linestyle='-', 
+                            linewidth=line_width_curve, color=color, label=label)
+                
+                # 2. 叠加非 TS 状态的粗水平线（同 state 图的线宽）
+                for i, (y_val, x_label) in enumerate(zip(y_path, data.x_labels)):
+                    if y_val == "":
+                        continue
+                    is_ts = re.match(r"^TS", x_label) is not None
+                    if not is_ts:
+                        x_left = x_pos_list[i] - 0.5
+                        x_right = x_pos_list[i] + 0.5
+                        y = float(y_val)
+                        ax.plot([x_left, x_right], [y, y], 
+                                linestyle='-', linewidth=line_width_segment, color=color)
+                
+                # 3. 添加能量值标签（同 curve 图）
+                if config.show_energy_labels:
+                    for i, y_val in enumerate(y_path):
+                        if y_val != "":
+                            x_pos = x_pos_list[i] + config.label_offset_x_curve
+                            y_pos = float(y_val) + config.label_offset_y_curve
+                            ax.text(x_pos, y_pos,
+                                   f"{float(y_val):.2f}", 
+                                   fontsize=font_size_energy_label, 
+                                   color=color,
+                                   ha=config.label_ha_curve)
+                
+                x_positions = x_pos_list
+            
+            # 应用样式（使用调整后的字体大小）
+            self.apply_common_style_to_ax(ax, data, x_positions, config, 
+                                          font_size_title, font_size_axis_title, 
+                                          font_size_axis_tick, preview_mode)
+            
+            # 添加图例（与 curve 图共用设置）
+            if config.show_legend:
+                legend_kwargs = {
+                    'loc': config.legend_loc,
+                    'prop': {'size': font_size_legend, 'weight': config.font_weight_legend},
+                    'frameon': config.legend_frameon,
+                }
+                if config.legend_bbox_to_anchor is not None:
+                    legend_kwargs['bbox_to_anchor'] = config.legend_bbox_to_anchor
+                ax.legend(**legend_kwargs)
+            
+            fig.tight_layout()
+            return fig
     
     def apply_common_style_to_ax(self, ax, data, x_positions, config, 
                                   font_size_title=None, font_size_axis_title=None, 
@@ -1395,7 +1624,7 @@ Copyright (c) 2023 华中科技大学
         
         # Y轴范围
         ax.set_ylim(config.y_axis_limits)
-        ax.tick_params(axis='y', labelsize=fs_axis_tick)
+        ax.tick_params(axis='both', labelsize=fs_axis_tick)
         
         # X/Y轴标题
         if config.show_x_title and config.x_title_text:
@@ -1408,7 +1637,12 @@ Copyright (c) 2023 华中科技大学
         # X轴刻度
         if x_positions:
             ax.set_xticks(x_positions)
-            ax.set_xticklabels(data.x_labels, fontsize=fs_axis_tick)
+            ax.set_xticklabels(data.x_labels, fontsize=fs_axis_tick,
+                               fontweight=config.font_weight_axis_tick)
+        
+        # 设置Y轴刻度标签粗细（X轴已在 set_xticklabels 中设置）
+        for label in ax.get_yticklabels():
+            label.set_fontweight(config.font_weight_axis_tick)
         
         # 边框线宽
         for spine in ['bottom', 'top', 'right', 'left']:
@@ -1445,18 +1679,33 @@ Copyright (c) 2023 华中科技大学
         toolbar = NavigationToolbar2Tk(self.canvas_state, self.state_display_frame)
         toolbar.update()
     
+    def display_combined_plot(self):
+        """在GUI中显示组合图"""
+        # 清除旧的内容
+        for widget in self.combined_display_frame.winfo_children():
+            widget.destroy()
+        
+        # 创建Canvas
+        self.canvas_combined = FigureCanvasTkAgg(self.fig_combined, master=self.combined_display_frame)
+        self.canvas_combined.draw()
+        self.canvas_combined.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        
+        # 添加工具栏
+        toolbar = NavigationToolbar2Tk(self.canvas_combined, self.combined_display_frame)
+        toolbar.update()
+    
     def open_image_viewer(self):
         """打开图片查看器窗口"""
-        if self.fig_curve is None or self.fig_state is None:
+        if self.fig_curve is None or self.fig_state is None or self.fig_combined is None:
             messagebox.showinfo("提示", "请先点击「开始绘图」生成图片")
             return
         
         # 创建独立窗口显示放大的图片
-        ImageViewerWindow(self.root, self.fig_curve, self.fig_state)
+        ImageViewerWindow(self.root, self.fig_curve, self.fig_state, self.fig_combined)
     
     def save_images(self):
         """保存图片到文件"""
-        if self.fig_curve is None or self.fig_state is None:
+        if self.fig_curve is None or self.fig_state is None or self.fig_combined is None:
             messagebox.showinfo("提示", "请先点击「开始绘图」生成图片")
             return
         
@@ -1478,6 +1727,7 @@ Copyright (c) 2023 华中科技大学
         
         curve_path = os.path.join(output_dir, (self.curve_name.get() or "curve图") + ".png")
         state_path = os.path.join(output_dir, (self.state_name.get() or "state图") + ".png")
+        combined_path = os.path.join(output_dir, (self.combined_name.get() or "组合图") + ".png")
         
         try:
             self.status_var.set("正在生成高清图片...")
@@ -1487,21 +1737,25 @@ Copyright (c) 2023 华中科技大学
             if self.current_data is not None and self.current_config is not None:
                 export_fig_curve = self.create_curve_figure(self.current_data, self.current_config, preview_mode=False)
                 export_fig_state = self.create_state_figure(self.current_data, self.current_config, preview_mode=False)
+                export_fig_combined = self.create_combined_figure(self.current_data, self.current_config, preview_mode=False)
                 
                 export_fig_curve.savefig(curve_path, dpi=self.current_config.dpi)
                 export_fig_state.savefig(state_path, dpi=self.current_config.dpi)
+                export_fig_combined.savefig(combined_path, dpi=self.current_config.dpi)
                 
                 # 清理导出的Figure对象
                 from matplotlib.pyplot import close
                 close(export_fig_curve)
                 close(export_fig_state)
+                close(export_fig_combined)
             else:
                 # 如果没有当前数据，直接保存预览图
                 self.fig_curve.savefig(curve_path, dpi=self.current_config.dpi if self.current_config else 300)
                 self.fig_state.savefig(state_path, dpi=self.current_config.dpi if self.current_config else 300)
+                self.fig_combined.savefig(combined_path, dpi=self.current_config.dpi if self.current_config else 300)
             
             self.status_var.set(f"图片已保存至: {output_dir}")
-            messagebox.showinfo("成功", f"图片已成功保存！\n\ncurve图: {curve_path}\nstate图: {state_path}")
+            messagebox.showinfo("成功", f"图片已成功保存！\n\ncurve图: {curve_path}\nstate图: {state_path}\n组合图: {combined_path}")
             
         except Exception as e:
             messagebox.showerror("错误", f"保存图片失败：{str(e)}")
